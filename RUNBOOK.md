@@ -26,3 +26,12 @@
 
 ## Проверка бэкапа
 - `./scripts/verify-restore.sh` — делает бэкап, восстанавливает во временную БД, сверяет rows.
+
+## Проверка деплоя (L2)
+1. `make deploy ENV=stage` — vault → db → migrate → up → smoke.
+2. `make status` — все healthy.
+3. `make backup` + `./scripts/verify-restore.sh` — бэкап и проверенное восстановление.
+4. CI: push в main - зелёный run (lint/test/build/trivy/push/smoke) — ссылка в README.
+
+## Откат
+- `./deploy/rollback.sh <version>` — api/worker на версию; **схема не откатывается** (forward-only, 003 необратим).

@@ -44,14 +44,14 @@ jobs:
           cd deploy
           docker compose build api worker mock-provider
       - name: Scan api image
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           image-ref: northwind/payment-api:${{ env.APP_VERSION }}
           format: table
           exit-code: "1"
           severity: CRITICAL,HIGH
       - name: Scan worker image
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           image-ref: northwind/payment-worker:${{ env.APP_VERSION }}
           format: table

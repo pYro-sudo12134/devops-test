@@ -55,7 +55,6 @@ jobs:
       - name: Setup Trivy
         uses: aquasecurity/setup-trivy@v0.3.1
         with:
-          version: v0.57.1
           cache: true
       - name: Scan images (fail on fixable CRITICAL/HIGH)
         run: |

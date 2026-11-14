@@ -9,7 +9,7 @@ x-logging: &default-logging
 x-app-env: &app-env
   POSTGRES_USER: payments
   POSTGRES_DB: payments
-  POSTGRES_HOST: db
+  DB_HOST: db
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_DEFAULT_USER: payments
 

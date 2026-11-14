@@ -61,8 +61,6 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-}
     volumes:
       - rabbitmq:/var/lib/rabbitmq
-      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
     ports:
       - "127.0.0.1:15672:15672"
     healthcheck:
@@ -153,6 +151,8 @@ services:
     build:
       context: ..
       dockerfile: mock-provider/Dockerfile
+    environment:
+      PROVIDER_API_KEY: ${PROVIDER_API_KEY:-}
     volumes:
       - provider-certs:/certs
     depends_on:

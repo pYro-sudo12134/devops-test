@@ -34,3 +34,12 @@
 - GHCR: `github.repository_owner.lowercase` не существует (пустая строка → `ghcr.io//...`); нужен `tr` в `$GITHUB_ENV`. Пакет `payment-worker` transient `denied` — retry.
 - Trivy поймал реальные CVE: `zlib1g` (base) и `starlette` (Python) — гейт работает; `--only-upgrade zlib1g` в `runtime`, `starlette==1.3.1`.
 - `Settings` (dataclass repr) логировал пароли — убрано, логируем только version/log_level.
+
+## Секреты: проверка в deploy.sh, не :?-джокеры в compose
+- Compose **не** использует `${VAR:?}` для секретов (`DB_PASSWORD`, `RABBITMQ_PASSWORD`, `PROVIDER_API_KEY`) — только `:-` (пустой дефолт), чтобы парсинг/build работали без секретов (CI, `docker compose config`).
+- Обязательность — **в `deploy.sh`**, по режиму:
+  - `env`: `:?` для `DB_PASSWORD`/`RABBITMQ_PASSWORD`/`PROVIDER_API_KEY` до compose-команд;
+  - `vault`: `:?` для `VAULT_DEV_ROOT_TOKEN`; после `render-env.sh` — `require_runtime_secret` для `DB_PASSWORD`/`RABBITMQ_PASSWORD`/`PROVIDER_API_KEY` (пусто → падаем с понятным сообщением, а не стартуем с пустым).
+- `mock-provider` получает `PROVIDER_API_KEY` через `environment` (значение экспортировано `deploy.sh` из `runtime.env`), **не** `env_file: runtime.env` — mock не видит DB/RabbitMQ пароли (наименьшие привилегии).
+- `APP_VERSION` — `:?` (не секрет, версия обязательна везде; `deploy.sh` задаёт).
+- `:?` в compose у секретов **убирали** потому, что Compose валидирует при парсинге для всех сервисов (Vault/db/rabbitmq), даже неактивных — CI падал на vault/db, которые не поднимались.

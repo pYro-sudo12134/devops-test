@@ -72,6 +72,21 @@ EOT
   chmod 600 runtime.env
 fi
 
+require_runtime_secret() {
+  local name="$1" val
+  val="$(grep -E "^${name}=" runtime.env | head -n1 | cut -d= -f2- | tr -d '\r' || true)"
+  if [ -z "${val}" ]; then
+    echo "runtime.env: ${name} is empty/missing (check Vault seed / .env)" >&2
+    exit 1
+  fi
+}
+require_runtime_secret DB_PASSWORD
+require_runtime_secret RABBITMQ_PASSWORD
+require_runtime_secret PROVIDER_API_KEY
+
+PROVIDER_API_KEY="$(grep -E '^PROVIDER_API_KEY=' runtime.env | head -n1 | cut -d= -f2- | tr -d '\r')"
+export PROVIDER_API_KEY
+
 if [ "$PULL_IMAGES" = "1" ]; then
   echo "pulling images (PULL_IMAGES=1)"
   $COMPOSE pull api worker mock-provider migrate

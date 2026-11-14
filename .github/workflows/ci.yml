@@ -53,13 +53,13 @@ jobs:
           cd deploy
           docker compose build api worker mock-provider
       - name: Scan api
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_PREFIX }}/payment-api:${{ env.APP_VERSION }}
           exit-code: "1"
           severity: CRITICAL,HIGH
       - name: Scan worker
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_PREFIX }}/payment-worker:${{ env.APP_VERSION }}
           exit-code: "1"

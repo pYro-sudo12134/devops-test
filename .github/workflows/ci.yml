@@ -38,6 +38,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      DB_PASSWORD: ci-build-dummy
+      RABBITMQ_PASSWORD: ci-build-dummy
     steps:
       - uses: actions/checkout@v4
       - name: Set APP_VERSION

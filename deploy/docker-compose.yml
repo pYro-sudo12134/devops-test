@@ -38,7 +38,7 @@ services:
     environment:
       POSTGRES_USER: payments
       POSTGRES_DB: payments
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -53,7 +53,7 @@ services:
     image: rabbitmq:3.13.7-management
     environment:
       RABBITMQ_DEFAULT_USER: payments
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-}
     volumes:
       - rabbitmq:/var/lib/rabbitmq
     ports:

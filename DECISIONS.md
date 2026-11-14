@@ -43,3 +43,9 @@
 - `mock-provider` получает `PROVIDER_API_KEY` через `environment` (значение экспортировано `deploy.sh` из `runtime.env`), **не** `env_file: runtime.env` — mock не видит DB/RabbitMQ пароли (наименьшие привилегии).
 - `APP_VERSION` — `:?` (не секрет, версия обязательна везде; `deploy.sh` задаёт).
 - `:?` в compose у секретов **убирали** потому, что Compose валидирует при парсинге для всех сервисов (Vault/db/rabbitmq), даже неактивных — CI падал на vault/db, которые не поднимались.
+
+## L3 — DLQ (подтверждено), provider key
+- DLQ работает: «ядовитое»/401 → 3 ретрая → `transfers.dlq`. `rabbitmqctl list_queues` подтверждает. Нормальный путь: `POST /transfers` → worker → mock-provider `201` → `COMPLETED`.
+- `mock-provider` не получал `PROVIDER_API_KEY` → 401 на все payout'ы → ложный DLQ. Исправлено: `PROVIDER_API_KEY` в `mock-provider.environment` (значение экспортируется `deploy.sh` из `runtime.env`); mock не видит DB/RabbitMQ пароли (наименьшие привилегии).
+- Обязательность секретов — в `deploy.sh` (`require_runtime_secret` после `render-env.sh`), не `:?`-джокеры в compose (compose валидирует при парсинге для всех сервисов, даже неактивных).
+- `401` — валидный кейс DLQ (провайдер отклонил), но в тесте был **баг конфигурации** (mock без ключа). Различать: 401/403 — конфиг; битый JSON/нет transfer — «ядовитое».

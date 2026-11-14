@@ -13,6 +13,17 @@ def declare_topology(channel, settings):
         exchange=settings.transfers_dlx,
         routing_key=settings.transfers_dlq_routing_key,
     )
+
+    channel.queue_declare(
+        queue=settings.transfers_retry_queue,
+        durable=True,
+        arguments={
+            "x-message-ttl": settings.transfers_retry_ttl_ms,
+            "x-dead-letter-exchange": "",
+            "x-dead-letter-routing-key": settings.transfers_queue,
+        },
+    )
+
     channel.queue_declare(
         queue=settings.transfers_queue,
         durable=True,

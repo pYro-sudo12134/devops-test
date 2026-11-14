@@ -35,3 +35,6 @@
 
 ## Откат
 - `./deploy/rollback.sh <version>` — api/worker на версию; **схема не откатывается** (forward-only, 003 необратим).
+
+## DLQ (L3)
+- `transfers.dlq > 0`: `logs worker | grep -iE "dlq|retry|moved"`; причина (401 → ключ mock; битый JSON; нет transfer). Вернуть в работу — management UI (move в `transfers`) после фикса, или пометить FAILED.

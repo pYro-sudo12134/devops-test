@@ -26,6 +26,8 @@ class Settings:
     transfers_dlq: str
     transfers_dlx: str
     transfers_dlq_routing_key: str
+    transfers_retry_queue: str
+    transfers_retry_ttl_ms: int
     worker_max_retries: int
 
     @property
@@ -50,5 +52,7 @@ def load_settings():
         transfers_dlq=os.environ.get("TRANSFERS_DLQ", "transfers.dlq"),
         transfers_dlx=os.environ.get("TRANSFERS_DLX", "transfers.dlx"),
         transfers_dlq_routing_key=os.environ.get("TRANSFERS_DLQ_ROUTING_KEY", "transfers.dlq"),
+        transfers_retry_queue=os.environ.get("TRANSFERS_RETRY_QUEUE", "transfers.retry"),
+        transfers_retry_ttl_ms=int(os.environ.get("TRANSFERS_RETRY_TTL_MS", "10000")),
         worker_max_retries=int(os.environ.get("WORKER_MAX_RETRIES", "3")),
     )

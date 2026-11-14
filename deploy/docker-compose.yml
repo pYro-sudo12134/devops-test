@@ -16,6 +16,8 @@ x-app-env: &app-env
   TRANSFERS_DLQ: transfers.dlq
   TRANSFERS_DLX: transfers.dlx
   TRANSFERS_DLQ_ROUTING_KEY: transfers.dlq
+  TRANSFERS_RETRY_QUEUE: transfers.retry
+  TRANSFERS_RETRY_TTL_MS: "10000"
   WORKER_MAX_RETRIES: "3"
 
 services:

@@ -24,6 +24,15 @@ def declare_topology(channel, settings):
         routing_key=settings.transfers_dlq_routing_key,
     )
     channel.queue_declare(
+        queue=settings.transfers_retry_queue,
+        durable=True,
+        arguments={
+            "x-message-ttl": settings.transfers_retry_ttl_ms,
+            "x-dead-letter-exchange": "",
+            "x-dead-letter-routing-key": settings.transfers_queue,
+        },
+    )
+    channel.queue_declare(
         queue=settings.transfers_queue,
         durable=True,
         arguments={
@@ -73,6 +82,8 @@ def main():
     logging.basicConfig(
         level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
+    logging.getLogger("pika").setLevel(logging.WARNING)
+
     start_http_server(8001)
     credentials = pika.PlainCredentials(settings.rabbitmq_user, settings.rabbitmq_password)
     connection = pika.BlockingConnection(
@@ -97,13 +108,15 @@ def main():
                 ch.basic_nack(method.delivery_tag, requeue=False)
                 return
             log.warning(
-                "retry %d/%d: %s (transfer=%s)",
-                retries, settings.worker_max_retries, exc, _safe_transfer_id(body),
+                "retry %d/%d via %s (ttl=%sms): %s (transfer=%s)",
+                retries, settings.worker_max_retries,
+                settings.transfers_retry_queue, settings.transfers_retry_ttl_ms,
+                exc, _safe_transfer_id(body),
             )
             MESSAGES.labels("retried").inc()
             ch.basic_publish(
                 exchange="",
-                routing_key=settings.transfers_queue,
+                routing_key=settings.transfers_retry_queue,
                 body=body,
                 properties=pika.BasicProperties(
                     delivery_mode=2,
@@ -117,8 +130,10 @@ def main():
 
     channel.basic_consume(queue=settings.transfers_queue, on_message_callback=on_message)
     log.info(
-        "consuming %s (max_retries=%d, dlq=%s)",
-        settings.transfers_queue, settings.worker_max_retries, settings.transfers_dlq,
+        "consuming %s (max_retries=%d, retry=%s ttl=%sms, dlq=%s)",
+        settings.transfers_queue, settings.worker_max_retries,
+        settings.transfers_retry_queue, settings.transfers_retry_ttl_ms,
+        settings.transfers_dlq,
     )
     channel.start_consuming()
 

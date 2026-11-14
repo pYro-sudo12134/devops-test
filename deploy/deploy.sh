@@ -55,6 +55,9 @@ if [ -z "$APP_VERSION" ]; then
 fi
 export APP_VERSION
 
+touch runtime.env
+chmod 600 runtime.env
+
 if [ "$SECRETS_SOURCE" = "vault" ]; then
   $COMPOSE up -d --wait vault
   bash ./vault/seed.sh "$ENV"

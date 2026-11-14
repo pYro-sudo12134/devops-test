@@ -15,7 +15,7 @@ from .validation import InvalidTransfer, parse_transfer, to_minor
 settings = load_settings()
 logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("api")
-log.info("starting with settings %s", settings)
+log.info("starting api version=%s log_level=%s", settings.app_version, settings.log_level)
 
 REQUESTS = Counter("api_requests_total", "HTTP requests", ["method", "path", "status"])
 

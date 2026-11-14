@@ -78,6 +78,7 @@ jobs:
 
   compose-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [build-scan-push]
     permissions:
       contents: read

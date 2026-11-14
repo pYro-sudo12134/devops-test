@@ -17,6 +17,13 @@ PULL_IMAGES="${PULL_IMAGES:-0}"
 
 cd "$(dirname "$0")"
 
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 COMPOSE="docker compose -f docker-compose.yml"
 if [ -n "${COMPOSE_EXTRA_FILE:-}" ]; then
   COMPOSE="$COMPOSE -f $COMPOSE_EXTRA_FILE"
@@ -70,7 +77,7 @@ else
   $COMPOSE build api worker mock-provider
 fi
 
-$COMPOSE run --rm --no-deps migrate
+$COMPOSE run --rm --no-deps -T migrate
 
 $COMPOSE up -d --remove-orphans --wait
 

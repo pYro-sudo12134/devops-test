@@ -3,3 +3,12 @@ services:
     profiles: ["disabled"]
   prometheus:
     profiles: ["disabled"]
+
+  migrate:
+    image: ${IMAGE_PREFIX}/payment-api:${APP_VERSION}
+  api:
+    image: ${IMAGE_PREFIX}/payment-api:${APP_VERSION}
+  worker:
+    image: ${IMAGE_PREFIX}/payment-worker:${APP_VERSION}
+  mock-provider:
+    image: ${IMAGE_PREFIX}/mock-provider:${APP_VERSION}

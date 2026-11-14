@@ -23,4 +23,11 @@
 - **`SECRETS_SOURCE=vault|env`**: локально Vault dev, в CI — env. Vault dev — оговорка в LIMITS.
 - **`backup.sh` дампит `payments`** (было `postgres` — бесполезный бэкап), ротация 7, `chmod 600`. `verify-restore.sh` — проверенное восстановление.
 - **`reporting-ui` отложен на L4** (дашборд «платежи работают?»); сейчас не в деплое, порт наружу не публикуется.
-- На данном моменте ИИ предложил `trivy`. Это нормально, но он не знал, что `aquasecurity/trivy-action@0.28.0` — неверная версия. Правильно: [aquasecurity/trivy-action@v0.28.0](https://github.com/aquasecurity/trivy-action/tree/v0.28.0/)
+- На данном моменте ИИ предложил `trivy`. Это нормально, но он не знал, что `aquasecurity/trivy-action@0.28.0` — неверная версия. Правильно: [aquasecurity/trivy-action@v0.28.0](https://github.com/aquasecurity/trivy-action/tree/v0.28.0/). Но эта версия даже невалидная, так что стоит выбрать [aquasecurity/trivy-action@v0.33.1](https://github.com/aquasecurity/trivy-action/tree/v0.33.1/)
+
+### GHCR / реестр
+- **Образы в GHCR** (`ghcr.io/<owner>/...`), тег по git sha (`APP_VERSION`). «Тег по версии» и «доставка» становятся осмысленными: CI пушит, compose-smoke пуллит **тот же** образ (не пересобирает) — проверяется реальная доставка, а не «собралось локально».
+- **Пакеты публичные** (для теста): проще откат/пулл на другой машине. В проде — приватные + pull secret; отмечено в LIMITS.
+- **`mock-provider` тоже в GHCR** — единообразие, smoke проверяет ровно реестр.
+- **Vault-валидация в `deploy.sh`, не в compose** (`:?` убран у `VAULT_DEV_ROOT_TOKEN`): compose парсит `${...:?}` для всего файла даже при `profiles: disabled`, из-за чего CI падал на vault, который не поднимается. Обязательность — по режиму (`vault`/`env`) в скрипте.
+- **`APP_VERSION` без дефолта `dev`**: `:?` в compose + проверка в `deploy.sh`. `dev`-тег ломал бы откат (два билда = один тег).

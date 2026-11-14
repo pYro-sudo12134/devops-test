@@ -19,14 +19,12 @@ services:
     cap_add:
       - IPC_LOCK
     environment:
-      # Явно требуем токен: без него compose упадёт с понятной ошибкой,
-      # а не поднимется с дефолтным root-токеном (L1: секретов-по-умолчанию нет).
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:?VAULT_DEV_ROOT_TOKEN is required}
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:-}
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
       VAULT_ADDR: http://127.0.0.1:8200
       VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:?VAULT_DEV_ROOT_TOKEN is required}
     ports:
-      - "127.0.0.1:8200:8200"   # только localhost, не наружу
+      - "127.0.0.1:8200:8200"
     healthcheck:
       test: ["CMD", "vault", "status"]
       interval: 3s
@@ -59,7 +57,7 @@ services:
     volumes:
       - rabbitmq:/var/lib/rabbitmq
     ports:
-      - "127.0.0.1:15672:15672"  # management UI только на localhost
+      - "127.0.0.1:15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
@@ -68,10 +66,8 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
-  # One-shot мигратор. Тот же образ, что api, но target=migrate и CMD — миграции.
-  # Запускается ОТДЕЛЬНО до раскатки: docker compose run --rm --no-deps migrate
   migrate:
-    image: northwind/payment-api:${APP_VERSION:-dev}
+    image: ${IMAGE_PREFIX:-northwind}/payment-api:${APP_VERSION:?APP_VERSION is required}
     build:
       context: ..
       dockerfile: services/api/Dockerfile
@@ -86,7 +82,7 @@ services:
     restart: "no"
 
   api:
-    image: northwind/payment-api:${APP_VERSION:-dev}
+    image: ${IMAGE_PREFIX:-northwind}/payment-api:${APP_VERSION:?APP_VERSION is required}
     build:
       context: ..
       dockerfile: services/api/Dockerfile
@@ -97,7 +93,6 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       APP_VERSION: ${APP_VERSION:-dev}
     healthcheck:
-      # Проверяем реально: /health должен проверять БД и RabbitMQ (см. main.py).
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
       interval: 5s
       timeout: 5s
@@ -114,7 +109,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: northwind/payment-worker:${APP_VERSION:-dev}
+    image: ${IMAGE_PREFIX:-northwind}/payment-worker:${APP_VERSION:?APP_VERSION is required}
     build:
       context: ..
       dockerfile: services/worker/Dockerfile
@@ -137,14 +132,13 @@ services:
     restart: unless-stopped
 
   mock-provider:
-    image: northwind/mock-provider:${APP_VERSION:-dev}
+    image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:?APP_VERSION is required}
     build:
       context: ..
       dockerfile: mock-provider/Dockerfile
     volumes:
       - provider-certs:/certs
     healthcheck:
-      # -k: self-signed cert; проверяем именно живость процесса.
       test: ["CMD", "python", "-c", "import ssl,urllib.request,sys; ctx=ssl._create_unverified_context(); sys.exit(0 if urllib.request.urlopen('https://127.0.0.1:9443/health', context=ctx, timeout=3).status == 200 else 1)"]
       interval: 3s
       timeout: 3s

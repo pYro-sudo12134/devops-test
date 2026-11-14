@@ -52,18 +52,19 @@ jobs:
         run: |
           cd deploy
           docker compose build api worker mock-provider
-      - name: Scan api
-        uses: aquasecurity/trivy-action@v0.36.0
+      - name: Setup Trivy
+        uses: aquasecurity/setup-trivy@v0.3.1
         with:
-          image-ref: ${{ env.IMAGE_PREFIX }}/payment-api:${{ env.APP_VERSION }}
-          exit-code: "1"
-          severity: CRITICAL,HIGH
-      - name: Scan worker
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_PREFIX }}/payment-worker:${{ env.APP_VERSION }}
-          exit-code: "1"
-          severity: CRITICAL,HIGH
+          version: v0.57.1
+          cache: true
+      - name: Scan images (fail on fixable CRITICAL/HIGH)
+        run: |
+          set -euo pipefail
+          for img in payment-api payment-worker; do
+            echo "scanning ${IMAGE_PREFIX}/${img}:${APP_VERSION}"
+            trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --no-progress \
+              "${IMAGE_PREFIX}/${img}:${APP_VERSION}"
+          done
       - name: Login GHCR
         uses: docker/login-action@v3
         with:

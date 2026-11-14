@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.7.4
+      - run: ruff check services mock-provider
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install pytest
+          pip install -r services/api/requirements.txt -r services/worker/requirements.txt
+      - name: Test api
+        run: PYTHONPATH=services/api pytest services/api/tests
+      - name: Test worker
+        run: PYTHONPATH=services/worker pytest services/worker/tests
+
+  build-and-scan:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set APP_VERSION
+        run: echo "APP_VERSION=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+      - name: Build images
+        run: |
+          cd deploy
+          docker compose build api worker mock-provider
+      - name: Scan api image
+        uses: aquasecurity/trivy-action@v0.28.0
+        with:
+          image-ref: northwind/payment-api:${{ env.APP_VERSION }}
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+      - name: Scan worker image
+        uses: aquasecurity/trivy-action@v0.28.0
+        with:
+          image-ref: northwind/payment-worker:${{ env.APP_VERSION }}
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    needs: [build-and-scan]
+    env:
+      SECRETS_SOURCE: env
+      DB_PASSWORD: ci-db-password
+      RABBITMQ_PASSWORD: ci-rabbit-password
+      PROVIDER_API_KEY: ci-provider-key
+      API_PORT: "8080"
+      LOG_LEVEL: INFO
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set APP_VERSION
+        run: echo "APP_VERSION=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+      - name: Deploy with the same path as CD
+        run: |
+          chmod +x deploy/*.sh deploy/vault/*.sh scripts/*.sh
+          COMPOSE_FILE="docker-compose.yml:docker-compose.ci.yml" ./deploy/deploy.sh stage
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f deploy/docker-compose.yml logs --tail=200
+      - name: Tear down (no volumes kept)
+        if: always()
+        run: docker compose -f deploy/docker-compose.yml down

@@ -1,0 +1,15 @@
+services:
+  api:
+    environment:
+      LOG_LEVEL: INFO
+    deploy:
+      replicas: 2
+
+  rabbitmq:
+    ports: []
+
+  prometheus:
+    ports: []
+
+  vault:
+    ports: []

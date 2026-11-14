@@ -1,0 +1,5 @@
+services:
+  vault:
+    profiles: ["disabled"]
+  prometheus:
+    profiles: ["disabled"]

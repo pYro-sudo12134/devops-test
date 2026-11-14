@@ -1,0 +1,179 @@
+name: payment-stack
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app-env: &app-env
+  POSTGRES_USER: payments
+  POSTGRES_DB: payments
+  POSTGRES_HOST: db
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_DEFAULT_USER: payments
+
+services:
+  vault:
+    image: hashicorp/vault:1.17.6
+    cap_add:
+      - IPC_LOCK
+    environment:
+      # Явно требуем токен: без него compose упадёт с понятной ошибкой,
+      # а не поднимется с дефолтным root-токеном (L1: секретов-по-умолчанию нет).
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:?VAULT_DEV_ROOT_TOKEN is required}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:?VAULT_DEV_ROOT_TOKEN is required}
+    ports:
+      - "127.0.0.1:8200:8200"   # только localhost, не наружу
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    logging: *default-logging
+    restart: unless-stopped
+
+  db:
+    image: postgres:16.4
+    environment:
+      POSTGRES_USER: payments
+      POSTGRES_DB: payments
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payments -d payments"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    logging: *default-logging
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13.7-management
+    environment:
+      RABBITMQ_DEFAULT_USER: payments
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:15672:15672"  # management UI только на localhost
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    logging: *default-logging
+    restart: unless-stopped
+
+  # One-shot мигратор. Тот же образ, что api, но target=migrate и CMD — миграции.
+  # Запускается ОТДЕЛЬНО до раскатки: docker compose run --rm --no-deps migrate
+  migrate:
+    image: northwind/payment-api:${APP_VERSION:-dev}
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+      target: migrate
+    env_file: runtime.env
+    environment:
+      <<: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *default-logging
+    restart: "no"
+
+  api:
+    image: northwind/payment-api:${APP_VERSION:-dev}
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+      target: runtime
+    env_file: runtime.env
+    environment:
+      <<: *app-env
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_VERSION: ${APP_VERSION:-dev}
+    healthcheck:
+      # Проверяем реально: /health должен проверять БД и RabbitMQ (см. main.py).
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    deploy:
+      replicas: 2
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+
+  worker:
+    image: northwind/payment-worker:${APP_VERSION:-dev}
+    build:
+      context: ..
+      dockerfile: services/worker/Dockerfile
+    env_file: runtime.env
+    environment:
+      <<: *app-env
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PROVIDER_URL: https://mock-provider:9443
+      PROVIDER_CA_BUNDLE: /certs/cert.pem
+    volumes:
+      - provider-certs:/certs:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mock-provider:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+
+  mock-provider:
+    image: northwind/mock-provider:${APP_VERSION:-dev}
+    build:
+      context: ..
+      dockerfile: mock-provider/Dockerfile
+    volumes:
+      - provider-certs:/certs
+    healthcheck:
+      # -k: self-signed cert; проверяем именно живость процесса.
+      test: ["CMD", "python", "-c", "import ssl,urllib.request,sys; ctx=ssl._create_unverified_context(); sys.exit(0 if urllib.request.urlopen('https://127.0.0.1:9443/health', context=ctx, timeout=3).status == 200 else 1)"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    logging: *default-logging
+    restart: unless-stopped
+
+  reverse-proxy:
+    image: nginx:1.27.3
+    volumes:
+      - ./reverse-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${API_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    logging: *default-logging
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  rabbitmq:
+  provider-certs:

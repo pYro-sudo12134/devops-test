@@ -133,7 +133,6 @@ services:
     restart: unless-stopped
 
   certs-init:
-    profiles: ["tools"]
     image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:?APP_VERSION is required}
     user: "0:0"
     entrypoint: ["sh", "-c", "mkdir -p /certs && chown -R 10003:10003 /certs"]

@@ -67,7 +67,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: ${IMAGE_PREFIX:-northwind}/payment-api:${APP_VERSION:?APP_VERSION is required}
+    image: ${IMAGE_PREFIX:-northwind}/payment-api-migrate:${APP_VERSION:?APP_VERSION is required}
     build:
       context: ..
       dockerfile: services/api/Dockerfile
@@ -91,7 +91,7 @@ services:
     environment:
       <<: *app-env
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      APP_VERSION: ${APP_VERSION:-dev}
+      APP_VERSION: ${APP_VERSION:?APP_VERSION is required}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
       interval: 5s
@@ -131,6 +131,15 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
+  certs-init:
+    image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:?APP_VERSION is required}
+    user: "0:0"
+    entrypoint: ["sh", "-c", "mkdir -p /certs && chown -R 10003:10003 /certs"]
+    volumes:
+      - provider-certs:/certs
+    restart: "no"
+    logging: *default-logging
+
   mock-provider:
     image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:?APP_VERSION is required}
     build:
@@ -138,6 +147,9 @@ services:
       dockerfile: mock-provider/Dockerfile
     volumes:
       - provider-certs:/certs
+    depends_on:
+      certs-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import ssl,urllib.request,sys; ctx=ssl._create_unverified_context(); sys.exit(0 if urllib.request.urlopen('https://127.0.0.1:9443/health', context=ctx, timeout=3).status == 200 else 1)"]
       interval: 3s

@@ -39,3 +39,12 @@
 - **`starlette` обновлён до 1.3.1** (fixed versions для CVE-2026-48818/54283). Проверено тестами/импортом — API совместим.
 - **`zlib1g` — точечный `--only-upgrade`** в runtime-слое, а не полный `apt-get upgrade`: детерминированнее, закрывает конкретный CVE, не «дрейфит» образ.
 - **Почему не `exit-code: 0` для HIGH:** гейт должен блокировать; ослабление — только если HIGH в base-образе неустранимы (тогда — запись в LIMITS и обоснование). Пока устранимы.
+## migrate: один тег — один образ
+- `migrate` и `api` имели **один тег** `payment-api:<sha>`, но разные `target` (`migrate`/`runtime`). `deploy.sh` собирал только `api` → `migrate` брал по тегу runtime-образ → запускал `entrypoint.sh` → uvicorn → контейнер не завершался (`run` ждёт exit) → вечное зависание. Плюс `--no-deps` → `db` нет.
+- Исправлено: **отдельный тег** `payment-api-migrate:<sha>` + `target: migrate`; `deploy.sh` собирает `migrate`, поднимает `db` до миграций, `run --rm --no-deps -T migrate`.
+- Урок: Docker-тег — один образ; два таргета под одним тегом затирают друг друга.
+- CI: `compose-smoke` проверяет env-путь (без Vault); vault-путь (локальный stage) — вручную (Vault dev в CI не поднимаем, `profiles: disabled`).
+- `touch runtime.env` до Compose-команд: Compose валидирует `env_file` при парсинге, а в vault-режиме файл создаётся позже.
+- `-T` для `run migrate`: без TTY `docker compose run` может висеть в CI.
+- `lock_timeout = 30s` на advisory lock: не ждём вечно.
+- Логирование `Settings` (dataclass repr) утекало паролями; убрано, логируем `version`/`log_level`.

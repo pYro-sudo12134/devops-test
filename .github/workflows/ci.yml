@@ -51,7 +51,7 @@ jobs:
       - name: Build
         run: |
           cd deploy
-          docker compose build api worker mock-provider
+          docker compose build api worker mock-provider migrate
       - name: Setup Trivy
         uses: aquasecurity/setup-trivy@v0.3.1
         with:
@@ -59,7 +59,7 @@ jobs:
       - name: Scan images (fail on fixable CRITICAL/HIGH)
         run: |
           set -euo pipefail
-          for img in payment-api payment-worker; do
+          for img in payment-api payment-worker payment-api-migrate; do
             echo "scanning ${IMAGE_PREFIX}/${img}:${APP_VERSION}"
             trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --no-progress \
               "${IMAGE_PREFIX}/${img}:${APP_VERSION}"
@@ -72,7 +72,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push
         run: |
-          for svc in payment-api payment-worker mock-provider; do
+          for svc in payment-api payment-worker mock-provider payment-api-migrate; do
             docker push "${IMAGE_PREFIX}/${svc}:${APP_VERSION}"
           done
 
@@ -111,6 +111,9 @@ jobs:
         run: |
           chmod +x deploy/*.sh deploy/vault/*.sh scripts/*.sh
           COMPOSE_EXTRA_FILE=docker-compose.ci.yml ./deploy/deploy.sh stage
+      - name: Status on failure
+        if: failure()
+        run: docker compose -f deploy/docker-compose.yml ps
       - name: Logs on failure
         if: failure()
         run: docker compose -f deploy/docker-compose.yml logs --tail=200

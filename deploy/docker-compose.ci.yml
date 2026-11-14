@@ -5,7 +5,7 @@ services:
     profiles: ["disabled"]
 
   migrate:
-    image: ${IMAGE_PREFIX}/payment-api:${APP_VERSION}
+    image: ${IMAGE_PREFIX}/payment-api-migrate:${APP_VERSION}
   api:
     image: ${IMAGE_PREFIX}/payment-api:${APP_VERSION}
   worker:

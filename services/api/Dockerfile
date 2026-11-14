@@ -15,7 +15,8 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY services/api/app ./app
 COPY migrations ./migrations
-RUN useradd --create-home --uid 10001 app
+RUN useradd --create-home --uid 10001 app \
+ && chown -R app:app /app
 USER app
 CMD ["python", "-m", "app.migrate"]
 

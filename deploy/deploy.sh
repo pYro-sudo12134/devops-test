@@ -74,11 +74,13 @@ fi
 
 if [ "$PULL_IMAGES" = "1" ]; then
   echo "pulling images (PULL_IMAGES=1)"
-  $COMPOSE pull api worker mock-provider
+  $COMPOSE pull api worker mock-provider migrate
 else
   echo "building images"
-  $COMPOSE build api worker mock-provider
+  $COMPOSE build api worker mock-provider migrate
 fi
+
+$COMPOSE up -d --wait db
 
 $COMPOSE run --rm --no-deps -T migrate
 

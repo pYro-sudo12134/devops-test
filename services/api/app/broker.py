@@ -34,7 +34,7 @@ def declare_topology(channel, settings):
     )
 
 
-def publish(settings, message):
+def publish(settings, message, request_id=None):
     credentials = pika.PlainCredentials(settings.rabbitmq_user, settings.rabbitmq_password)
     parameters = pika.ConnectionParameters(
         host=settings.rabbitmq_host, credentials=credentials, socket_timeout=3
@@ -43,14 +43,14 @@ def publish(settings, message):
     try:
         channel = connection.channel()
         declare_topology(channel, settings)
+        headers = {"x-retry-count": 0}
+        if request_id:
+            headers["x-request-id"] = request_id
         channel.basic_publish(
             exchange="",
             routing_key=settings.transfers_queue,
             body=json.dumps(message),
-            properties=pika.BasicProperties(
-                delivery_mode=2,
-                headers={"x-retry-count": 0},
-            ),
+            properties=pika.BasicProperties(delivery_mode=2, headers=headers),
         )
     finally:
         connection.close()

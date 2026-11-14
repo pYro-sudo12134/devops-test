@@ -1,8 +1,8 @@
 import logging
 import uuid
 
-import psycopg
 import pika
+import psycopg
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, Response
@@ -14,6 +14,7 @@ from .validation import InvalidTransfer, parse_transfer, to_minor
 
 settings = load_settings()
 logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.getLogger("pika").setLevel(logging.WARNING)
 log = logging.getLogger("api")
 log.info("starting api version=%s log_level=%s", settings.app_version, settings.log_level)
 
@@ -22,6 +23,15 @@ REQUESTS = Counter("api_requests_total", "HTTP requests", ["method", "path", "st
 
 def count(request, response):
     REQUESTS.labels(request.method, request.url.path.split("/")[1], response.status_code).inc()
+    return response
+
+
+def _request_id(request):
+    return request.headers.get("X-Request-Id") or uuid.uuid4().hex
+
+
+def _with_request_id(response, request_id):
+    response.headers["X-Request-Id"] = request_id
     return response
 
 
@@ -61,10 +71,12 @@ SELECT = "SELECT id, amount_minor, currency, recipient, status, provider_referen
 
 
 async def create_transfer(request):
+    request_id = _request_id(request)
     try:
         amount, currency, recipient = parse_transfer(await request.json())
     except (InvalidTransfer, ValueError) as exc:
-        return count(request, JSONResponse({"error": str(exc)}, status_code=400))
+        log.warning("invalid transfer request_id=%s: %s", request_id, exc)
+        return _with_request_id(count(request, JSONResponse({"error": str(exc)}, status_code=400)), request_id)
     transfer_id = uuid.uuid4()
     client_ip = request.client.host if request.client else None
     with psycopg.connect(settings.dsn) as conn:
@@ -73,21 +85,25 @@ async def create_transfer(request):
             (transfer_id, to_minor(amount), currency, recipient, "PENDING", client_ip),
         )
         row = conn.execute(SELECT, (transfer_id,)).fetchone()
-    broker.publish(settings, {"transfer_id": str(transfer_id)})
-    log.info("transfer created id=%s client_ip=%s", transfer_id, client_ip)
-    return count(request, JSONResponse(row_to_json(row), status_code=202))
+    broker.publish(settings, {"transfer_id": str(transfer_id)}, request_id=request_id)
+    log.info("transfer created id=%s client_ip=%s request_id=%s", transfer_id, client_ip, request_id)
+    return _with_request_id(count(request, JSONResponse(row_to_json(row), status_code=202)), request_id)
 
 
 async def get_transfer(request):
+    request_id = _request_id(request)
     try:
         transfer_id = uuid.UUID(request.path_params["transfer_id"])
     except ValueError:
-        return count(request, JSONResponse({"error": "not found"}, status_code=404))
+        log.info("get transfer: invalid id request_id=%s", request_id)
+        return _with_request_id(count(request, JSONResponse({"error": "not found"}, status_code=404)), request_id)
     with psycopg.connect(settings.dsn) as conn:
         row = conn.execute(SELECT, (transfer_id,)).fetchone()
     if row is None:
-        return count(request, JSONResponse({"error": "not found"}, status_code=404))
-    return count(request, JSONResponse(row_to_json(row)))
+        log.info("get transfer id=%s not found request_id=%s", transfer_id, request_id)
+        return _with_request_id(count(request, JSONResponse({"error": "not found"}, status_code=404)), request_id)
+    log.info("get transfer id=%s status=%s request_id=%s", transfer_id, row[4], request_id)
+    return _with_request_id(count(request, JSONResponse(row_to_json(row))), request_id)
 
 
 async def metrics(request):

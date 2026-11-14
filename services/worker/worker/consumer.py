@@ -42,7 +42,7 @@ def declare_topology(channel, settings):
     )
 
 
-def process(settings, body):
+def process(settings, body, request_id=None):
     transfer_id = parse_message(body)
     with psycopg.connect(settings.dsn) as conn:
         row = conn.execute(
@@ -54,12 +54,15 @@ def process(settings, body):
         amount_minor, currency, recipient, status = row
         if status != "PENDING":
             return
-        payout = send_payout(settings, transfer_id, f"{amount_minor / 100:.2f}", currency, recipient)
+        payout = send_payout(
+            settings, transfer_id, f"{amount_minor / 100:.2f}", currency, recipient,
+            request_id=request_id,
+        )
         conn.execute(
             "UPDATE transfers SET status = %s, provider_reference = %s, updated_at = now() WHERE id = %s",
             (payout["status"], payout["payout_id"], transfer_id),
         )
-    log.info("transfer %s is %s", transfer_id, payout["status"])
+    log.info("transfer %s is %s request_id=%s", transfer_id, payout["status"], request_id)
 
 
 def _retry_count(properties) -> int:
@@ -68,6 +71,11 @@ def _retry_count(properties) -> int:
         return int(headers.get("x-retry-count", 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _request_id(properties):
+    headers = (properties.headers or {}) if properties else {}
+    return headers.get("x-request-id")
 
 
 def _safe_transfer_id(body):
@@ -94,34 +102,35 @@ def main():
     channel.basic_qos(prefetch_count=1)
 
     def on_message(ch, method, properties, body):
+        request_id = _request_id(properties)
         retries = _retry_count(properties)
         try:
-            process(settings, body)
+            process(settings, body, request_id=request_id)
         except Exception as exc:
             retries += 1
             if retries >= settings.worker_max_retries:
                 log.error(
-                    "message moved to DLQ after %d retries: %s (transfer=%s)",
-                    retries, exc, _safe_transfer_id(body),
+                    "message moved to DLQ after %d retries: %s (transfer=%s request_id=%s)",
+                    retries, exc, _safe_transfer_id(body), request_id,
                 )
                 MESSAGES.labels("dlq").inc()
                 ch.basic_nack(method.delivery_tag, requeue=False)
                 return
             log.warning(
-                "retry %d/%d via %s (ttl=%sms): %s (transfer=%s)",
+                "retry %d/%d via %s (ttl=%sms): %s (transfer=%s request_id=%s)",
                 retries, settings.worker_max_retries,
                 settings.transfers_retry_queue, settings.transfers_retry_ttl_ms,
-                exc, _safe_transfer_id(body),
+                exc, _safe_transfer_id(body), request_id,
             )
             MESSAGES.labels("retried").inc()
+            headers = {"x-retry-count": retries}
+            if request_id:
+                headers["x-request-id"] = request_id
             ch.basic_publish(
                 exchange="",
                 routing_key=settings.transfers_retry_queue,
                 body=body,
-                properties=pika.BasicProperties(
-                    delivery_mode=2,
-                    headers={"x-retry-count": retries},
-                ),
+                properties=pika.BasicProperties(delivery_mode=2, headers=headers),
             )
             ch.basic_ack(method.delivery_tag)
             return

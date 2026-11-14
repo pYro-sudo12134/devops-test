@@ -22,6 +22,11 @@ class Settings:
     provider_api_key: str
     provider_ca_bundle: str
     log_level: str
+    transfers_queue: str
+    transfers_dlq: str
+    transfers_dlx: str
+    transfers_dlq_routing_key: str
+    worker_max_retries: int
 
     @property
     def dsn(self):
@@ -41,4 +46,9 @@ def load_settings():
         provider_api_key=required("PROVIDER_API_KEY"),
         provider_ca_bundle=os.environ.get("PROVIDER_CA_BUNDLE", "/certs/cert.pem"),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
+        transfers_queue=os.environ.get("TRANSFERS_QUEUE", "transfers"),
+        transfers_dlq=os.environ.get("TRANSFERS_DLQ", "transfers.dlq"),
+        transfers_dlx=os.environ.get("TRANSFERS_DLX", "transfers.dlx"),
+        transfers_dlq_routing_key=os.environ.get("TRANSFERS_DLQ_ROUTING_KEY", "transfers.dlq"),
+        worker_max_retries=int(os.environ.get("WORKER_MAX_RETRIES", "3")),
     )

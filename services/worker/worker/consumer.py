@@ -9,15 +9,36 @@ from .messages import parse_message
 from .provider import send_payout
 
 log = logging.getLogger("worker")
-QUEUE = "transfers"
+
 MESSAGES = Counter("worker_messages_total", "Processed messages", ["result"])
+
+
+def declare_topology(channel, settings):
+    channel.exchange_declare(
+        exchange=settings.transfers_dlx, exchange_type="direct", durable=True
+    )
+    channel.queue_declare(queue=settings.transfers_dlq, durable=True)
+    channel.queue_bind(
+        queue=settings.transfers_dlq,
+        exchange=settings.transfers_dlx,
+        routing_key=settings.transfers_dlq_routing_key,
+    )
+    channel.queue_declare(
+        queue=settings.transfers_queue,
+        durable=True,
+        arguments={
+            "x-dead-letter-exchange": settings.transfers_dlx,
+            "x-dead-letter-routing-key": settings.transfers_dlq_routing_key,
+        },
+    )
 
 
 def process(settings, body):
     transfer_id = parse_message(body)
     with psycopg.connect(settings.dsn) as conn:
         row = conn.execute(
-            "SELECT amount_minor, currency, recipient, status FROM transfers WHERE id = %s FOR UPDATE", (transfer_id,)
+            "SELECT amount_minor, currency, recipient, status FROM transfers WHERE id = %s FOR UPDATE",
+            (transfer_id,),
         ).fetchone()
         if row is None:
             raise LookupError(f"transfer {transfer_id} does not exist")
@@ -32,29 +53,73 @@ def process(settings, body):
     log.info("transfer %s is %s", transfer_id, payout["status"])
 
 
+def _retry_count(properties) -> int:
+    headers = (properties.headers or {}) if properties else {}
+    try:
+        return int(headers.get("x-retry-count", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _safe_transfer_id(body):
+    try:
+        return str(parse_message(body))
+    except Exception:
+        return "?"
+
+
 def main():
     settings = load_settings()
-    logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logging.basicConfig(
+        level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
     start_http_server(8001)
     credentials = pika.PlainCredentials(settings.rabbitmq_user, settings.rabbitmq_password)
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host=settings.rabbitmq_host, credentials=credentials))
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host=settings.rabbitmq_host, credentials=credentials)
+    )
     channel = connection.channel()
-    channel.queue_declare(queue=QUEUE, durable=True)
+    declare_topology(channel, settings)
     channel.basic_qos(prefetch_count=1)
 
     def on_message(ch, method, properties, body):
+        retries = _retry_count(properties)
         try:
             process(settings, body)
-        except Exception:
-            log.exception("failed to process message")
-            MESSAGES.labels("failed").inc()
-            ch.basic_nack(method.delivery_tag, requeue=True)
-        else:
-            MESSAGES.labels("processed").inc()
+        except Exception as exc:
+            retries += 1
+            if retries >= settings.worker_max_retries:
+                log.error(
+                    "message moved to DLQ after %d retries: %s (transfer=%s)",
+                    retries, exc, _safe_transfer_id(body),
+                )
+                MESSAGES.labels("dlq").inc()
+                ch.basic_nack(method.delivery_tag, requeue=False)
+                return
+            log.warning(
+                "retry %d/%d: %s (transfer=%s)",
+                retries, settings.worker_max_retries, exc, _safe_transfer_id(body),
+            )
+            MESSAGES.labels("retried").inc()
+            ch.basic_publish(
+                exchange="",
+                routing_key=settings.transfers_queue,
+                body=body,
+                properties=pika.BasicProperties(
+                    delivery_mode=2,
+                    headers={"x-retry-count": retries},
+                ),
+            )
             ch.basic_ack(method.delivery_tag)
+            return
+        MESSAGES.labels("processed").inc()
+        ch.basic_ack(method.delivery_tag)
 
-    channel.basic_consume(queue=QUEUE, on_message_callback=on_message)
-    log.info("consuming %s", QUEUE)
+    channel.basic_consume(queue=settings.transfers_queue, on_message_callback=on_message)
+    log.info(
+        "consuming %s (max_retries=%d, dlq=%s)",
+        settings.transfers_queue, settings.worker_max_retries, settings.transfers_dlq,
+    )
     channel.start_consuming()
 
 

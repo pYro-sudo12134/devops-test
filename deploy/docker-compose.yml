@@ -12,6 +12,11 @@ x-app-env: &app-env
   DB_HOST: db
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_DEFAULT_USER: payments
+  TRANSFERS_QUEUE: transfers
+  TRANSFERS_DLQ: transfers.dlq
+  TRANSFERS_DLX: transfers.dlx
+  TRANSFERS_DLQ_ROUTING_KEY: transfers.dlq
+  WORKER_MAX_RETRIES: "3"
 
 services:
   vault:
@@ -56,6 +61,8 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-}
     volumes:
       - rabbitmq:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
     ports:
       - "127.0.0.1:15672:15672"
     healthcheck:

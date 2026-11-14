@@ -1,10 +1,13 @@
 import logging
+import time
 import uuid
 
 import pika
 import psycopg
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
@@ -18,11 +21,34 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 log = logging.getLogger("api")
 log.info("starting api version=%s log_level=%s", settings.app_version, settings.log_level)
 
+
 REQUESTS = Counter("api_requests_total", "HTTP requests", ["method", "path", "status"])
+LATENCY = Histogram(
+    "http_request_duration_seconds", "HTTP request latency", ["method", "path"],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
+IN_FLIGHT = Gauge("api_in_flight", "In-flight HTTP requests")
+TRANSFERS_CREATED = Counter("transfers_created_total", "Transfers created")
+
+
+def _path_label(request):
+    return request.url.path.split("/")[1] or "/"
+
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        start = time.monotonic()
+        IN_FLIGHT.inc()
+        try:
+            response = await call_next(request)
+        finally:
+            IN_FLIGHT.dec()
+            LATENCY.labels(request.method, _path_label(request)).observe(time.monotonic() - start)
+        return response
 
 
 def count(request, response):
-    REQUESTS.labels(request.method, request.url.path.split("/")[1], response.status_code).inc()
+    REQUESTS.labels(request.method, _path_label(request), response.status_code).inc()
     return response
 
 
@@ -86,6 +112,7 @@ async def create_transfer(request):
         )
         row = conn.execute(SELECT, (transfer_id,)).fetchone()
     broker.publish(settings, {"transfer_id": str(transfer_id)}, request_id=request_id)
+    TRANSFERS_CREATED.inc()
     log.info("transfer created id=%s client_ip=%s request_id=%s", transfer_id, client_ip, request_id)
     return _with_request_id(count(request, JSONResponse(row_to_json(row), status_code=202)), request_id)
 
@@ -116,5 +143,6 @@ app = Starlette(
         Route("/metrics", metrics),
         Route("/transfers", create_transfer, methods=["POST"]),
         Route("/transfers/{transfer_id}", get_transfer),
-    ]
+    ],
+    middleware=[Middleware(MetricsMiddleware)],
 )

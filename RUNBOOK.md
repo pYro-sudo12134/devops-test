@@ -38,3 +38,7 @@
 
 ## DLQ (L3)
 - `transfers.dlq > 0`: `logs worker | grep -iE "dlq|retry|moved"`; причина (401 → ключ mock; битый JSON; нет transfer). Вернуть в работу — management UI (move в `transfers`) после фикса, или пометить FAILED.
+## Отладка по request_id
+- `X-Request-Id` (nginx `$request_id` или клиент) → api → очередь → worker → провайдер; возвращается в ответе api.
+- `docker compose logs api worker | grep "<request_id>"` — сквозная трассировка (created/completed/retry/dlq, payout request).
+- Если `SSLError` к mock-provider — `openssl x509 -in /certs/cert.pem -noout -text | grep DNS` (SAN), `PROVIDER_CA_BUNDLE`.

@@ -49,3 +49,11 @@
 - `mock-provider` не получал `PROVIDER_API_KEY` → 401 на все payout'ы → ложный DLQ. Исправлено: `PROVIDER_API_KEY` в `mock-provider.environment` (значение экспортируется `deploy.sh` из `runtime.env`); mock не видит DB/RabbitMQ пароли (наименьшие привилегии).
 - Обязательность секретов — в `deploy.sh` (`require_runtime_secret` после `render-env.sh`), не `:?`-джокеры в compose (compose валидирует при парсинге для всех сервисов, даже неактивных).
 - `401` — валидный кейс DLQ (провайдер отклонил), но в тесте был **баг конфигурации** (mock без ключа). Различать: 401/403 — конфиг; битый JSON/нет transfer — «ядовитое».
+
+## request_id (L3) — замкнут
+- nginx `$request_id` → `X-Request-Id` в api (уже был в nginx.conf стартера, api не читал — доделали).
+- api: `_request_id` (X-Request-Id или uuid) → лог (`created`/`get`/`invalid`) → `broker.publish(..., request_id)` → `x-request-id` в headers → ответ `X-Request-Id`.
+- worker: `x-request-id` из `properties.headers` → `send_payout` (`X-Request-Id` провайдеру) → лог (`payout request`, `completed`, `retry`, `dlq`).
+- При retry `x-request-id` сохраняется в headers; в DLQ — виден.
+- Проверено: `curl -i` → `x-request-id` в ответе = `request_id` в логах api/worker.
+- `proxy_pass` → api (единственный HTTP-вход для клиента); worker получает `request_id` из очереди, mock-provider — от worker. mock-provider не логирует `X-Request-Id` (внешний, опционально — LIMITS).

@@ -45,3 +45,6 @@ lint:
 test:
 	PYTHONPATH=services/api pytest services/api/tests
 	PYTHONPATH=services/worker pytest services/worker/tests
+
+deploy-observability:
+	COMPOSE_EXTRA_FILE=docker-compose.reporting.yml ./deploy/deploy.sh $(ENV)

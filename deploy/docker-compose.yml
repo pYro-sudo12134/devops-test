@@ -1,5 +1,8 @@
 name: payment-stack
 
+x-labels: &labels-payments
+  com.northwind.owner: payments
+
 x-logging: &default-logging
   driver: json-file
   options:
@@ -39,6 +42,7 @@ services:
       retries: 20
     logging: *default-logging
     restart: unless-stopped
+    labels: *labels-payments
 
   db:
     image: postgres:16.4
@@ -55,6 +59,7 @@ services:
       retries: 20
     logging: *default-logging
     restart: unless-stopped
+    labels: *labels-payments
 
   rabbitmq:
     image: rabbitmq:3.13.7-management
@@ -72,6 +77,7 @@ services:
       retries: 30
     logging: *default-logging
     restart: unless-stopped
+    labels: *labels-payments
 
   migrate:
     profiles: ["tools"]
@@ -88,6 +94,7 @@ services:
         condition: service_healthy
     logging: *default-logging
     restart: "no"
+    labels: *labels-payments
 
   api:
     image: ${IMAGE_PREFIX:-northwind}/payment-api:${APP_VERSION:?APP_VERSION is required}
@@ -115,6 +122,7 @@ services:
         condition: service_healthy
     logging: *default-logging
     restart: unless-stopped
+    labels: *labels-payments
 
   worker:
     image: ${IMAGE_PREFIX:-northwind}/payment-worker:${APP_VERSION:?APP_VERSION is required}
@@ -138,6 +146,7 @@ services:
         condition: service_healthy
     logging: *default-logging
     restart: unless-stopped
+    labels: *labels-payments
 
   certs-init:
     image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:?APP_VERSION is required}
@@ -147,6 +156,7 @@ services:
       - provider-certs:/certs
     restart: "no"
     logging: *default-logging
+    labels: *labels-payments
 
   mock-provider:
     image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:?APP_VERSION is required}
@@ -167,6 +177,7 @@ services:
       retries: 20
     logging: *default-logging
     restart: unless-stopped
+    labels: *labels-payments
 
   reverse-proxy:
     image: nginx:1.27.3
@@ -179,6 +190,7 @@ services:
         condition: service_healthy
     logging: *default-logging
     restart: unless-stopped
+    labels: *labels-payments
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -188,6 +200,7 @@ services:
       - "127.0.0.1:9090:9090"
     logging: *default-logging
     restart: unless-stopped
+    labels: *labels-payments
 
 volumes:
   pgdata:

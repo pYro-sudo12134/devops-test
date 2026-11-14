@@ -2,7 +2,7 @@ import logging
 
 import pika
 import psycopg
-from prometheus_client import Counter, start_http_server
+from prometheus_client import Counter, Gauge, start_http_server
 
 from .config import load_settings
 from .messages import parse_message
@@ -11,6 +11,8 @@ from .provider import send_payout
 log = logging.getLogger("worker")
 
 MESSAGES = Counter("worker_messages_total", "Processed messages", ["result"])
+TRANSFERS = Counter("transfers_total", "Transfers by final status", ["status"])
+OLDEST_PENDING = Gauge("oldest_pending_age_seconds", "Age of the oldest PENDING transfer (seconds)")
 
 
 def declare_topology(channel, settings):
@@ -62,7 +64,20 @@ def process(settings, body, request_id=None):
             "UPDATE transfers SET status = %s, provider_reference = %s, updated_at = now() WHERE id = %s",
             (payout["status"], payout["payout_id"], transfer_id),
         )
+    TRANSFERS.labels(payout["status"]).inc()
     log.info("transfer %s is %s request_id=%s", transfer_id, payout["status"], request_id)
+
+
+def update_oldest_pending(settings):
+    """Бизнес-метрика: возраст самого старого PENDING (секунды)."""
+    try:
+        with psycopg.connect(settings.dsn) as conn:
+            row = conn.execute(
+                "SELECT EXTRACT(EPOCH FROM (now() - min(created_at))) FROM transfers WHERE status = 'PENDING'"
+            ).fetchone()
+        OLDEST_PENDING.set(float(row[0]) if row and row[0] is not None else 0.0)
+    except Exception as exc:
+        log.warning("update_oldest_pending failed: %s", exc)
 
 
 def _retry_count(properties) -> int:
@@ -115,6 +130,7 @@ def main():
                 )
                 MESSAGES.labels("dlq").inc()
                 ch.basic_nack(method.delivery_tag, requeue=False)
+                update_oldest_pending(settings)
                 return
             log.warning(
                 "retry %d/%d via %s (ttl=%sms): %s (transfer=%s request_id=%s)",
@@ -133,9 +149,11 @@ def main():
                 properties=pika.BasicProperties(delivery_mode=2, headers=headers),
             )
             ch.basic_ack(method.delivery_tag)
+            update_oldest_pending(settings)
             return
         MESSAGES.labels("processed").inc()
         ch.basic_ack(method.delivery_tag)
+        update_oldest_pending(settings)
 
     channel.basic_consume(queue=settings.transfers_queue, on_message_callback=on_message)
     log.info(

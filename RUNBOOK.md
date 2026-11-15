@@ -42,3 +42,22 @@
 - `X-Request-Id` (nginx `$request_id` или клиент) → api → очередь → worker → провайдер; возвращается в ответе api.
 - `docker compose logs api worker | grep "<request_id>"` — сквозная трассировка (created/completed/retry/dlq, payout request).
 - Если `SSLError` к mock-provider — `openssl x509 -in /certs/cert.pem -noout -text | grep DNS` (SAN), `PROVIDER_CA_BUNDLE`.
+
+## Зависший PENDING (oldest_pending_age_seconds > 300)
+1. Алерт > 300с. `SELECT id, status, created_at FROM transfers WHERE status='PENDING' ORDER BY created_at;`
+2. Причины: DLQ (ядовитое/401/5xx), **publish fail** (dual-write: RabbitMQ был недоступен — сообщение не ушло), потеря сообщения (volume rabbitmq пересоздавался), worker down, провайдер висит.
+3. `rabbitmqctl list_queues` (transfers/retry/dlq), `logs worker | grep -E "dlq|retry|error"`, `logs api` (publish).
+4. Fix: replay из DLQ (management UI) после устранения причины; **для publish-fail — outbox/ручной replay** (в проде outbox; в тесте — ручной replay/FAILED); пометить FAILED (если не восстановимо).
+5. Пример: `b7f853ad` — 401 (mock без ключа) → DLQ → PENDING 4791с; fix mock → replay/FAILED.
+
+## Наблюдаемость
+- Grafana: http://127.0.0.1:8090 (reporting-ui → Grafana), admin/<GRAFANA_ADMIN_PASSWORD>.
+- Prometheus: http://127.0.0.1:9090 (targets/alerts), Alertmanager: http://127.0.0.1:9093.
+- Алерты: OldestPendingTooOld (>300s), TransfersDLQNotEmpty, ApiDown/WorkerDown, NoTargetsUp.
+- `make deploy-observability` — поднять; `make deploy` — только бизнес (наблюдаемость не трогает).
+
+## Секреты Vault (Grafana и др.)
+- `deploy/.env` — источник (GRAFANA_ADMIN_PASSWORD, DB_PASSWORD, RABBITMQ_PASSWORD, PROVIDER_API_KEY).
+- `seed.sh` → Vault (secret/payment-stack/<env>); `render-env.sh` → runtime.env; `deploy.sh` → export.
+- Если секрет не применился (seed не перезаписывает): `vault kv delete secret/payment-stack/<env>` + `make deploy-observability` (re-seed).
+- Grafana: admin / GRAFANA_ADMIN_PASSWORD (из .env/Vault); http://127.0.0.1:8090.

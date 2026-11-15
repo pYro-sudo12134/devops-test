@@ -41,8 +41,8 @@ services:
       timeout: 3s
       retries: 20
     logging: *default-logging
-    restart: unless-stopped
     labels: *labels-payments
+    restart: unless-stopped
 
   db:
     image: postgres:16.4
@@ -58,8 +58,8 @@ services:
       timeout: 3s
       retries: 20
     logging: *default-logging
-    restart: unless-stopped
     labels: *labels-payments
+    restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:3.13.7-management
@@ -76,12 +76,12 @@ services:
       timeout: 5s
       retries: 30
     logging: *default-logging
-    restart: unless-stopped
     labels: *labels-payments
+    restart: unless-stopped
 
   migrate:
     profiles: ["tools"]
-    image: ${IMAGE_PREFIX:-northwind}/payment-api-migrate:${APP_VERSION:?APP_VERSION is required}
+    image: ${IMAGE_PREFIX:-northwind}/payment-api-migrate:${APP_VERSION:-dev}
     build:
       context: ..
       dockerfile: services/api/Dockerfile
@@ -93,11 +93,11 @@ services:
       db:
         condition: service_healthy
     logging: *default-logging
-    restart: "no"
     labels: *labels-payments
+    restart: "no"
 
   api:
-    image: ${IMAGE_PREFIX:-northwind}/payment-api:${APP_VERSION:?APP_VERSION is required}
+    image: ${IMAGE_PREFIX:-northwind}/payment-api:${APP_VERSION:-dev}
     build:
       context: ..
       dockerfile: services/api/Dockerfile
@@ -106,7 +106,7 @@ services:
     environment:
       <<: *app-env
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      APP_VERSION: ${APP_VERSION:?APP_VERSION is required}
+      APP_VERSION: ${APP_VERSION:-dev}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
       interval: 5s
@@ -121,11 +121,11 @@ services:
       rabbitmq:
         condition: service_healthy
     logging: *default-logging
-    restart: unless-stopped
     labels: *labels-payments
+    restart: unless-stopped
 
   worker:
-    image: ${IMAGE_PREFIX:-northwind}/payment-worker:${APP_VERSION:?APP_VERSION is required}
+    image: ${IMAGE_PREFIX:-northwind}/payment-worker:${APP_VERSION:-dev}
     build:
       context: ..
       dockerfile: services/worker/Dockerfile
@@ -145,11 +145,11 @@ services:
       mock-provider:
         condition: service_healthy
     logging: *default-logging
-    restart: unless-stopped
     labels: *labels-payments
+    restart: unless-stopped
 
   certs-init:
-    image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:?APP_VERSION is required}
+    image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:-dev}
     user: "0:0"
     entrypoint: ["sh", "-c", "mkdir -p /certs && chown -R 10003:10003 /certs"]
     volumes:
@@ -159,7 +159,7 @@ services:
     labels: *labels-payments
 
   mock-provider:
-    image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:?APP_VERSION is required}
+    image: ${IMAGE_PREFIX:-northwind}/mock-provider:${APP_VERSION:-dev}
     build:
       context: ..
       dockerfile: mock-provider/Dockerfile
@@ -176,8 +176,8 @@ services:
       timeout: 3s
       retries: 20
     logging: *default-logging
-    restart: unless-stopped
     labels: *labels-payments
+    restart: unless-stopped
 
   reverse-proxy:
     image: nginx:1.27.3
@@ -189,18 +189,8 @@ services:
       api:
         condition: service_healthy
     logging: *default-logging
-    restart: unless-stopped
     labels: *labels-payments
-
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    volumes:
-      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "127.0.0.1:9090:9090"
-    logging: *default-logging
     restart: unless-stopped
-    labels: *labels-payments
 
 volumes:
   pgdata:

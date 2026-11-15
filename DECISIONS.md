@@ -57,3 +57,26 @@
 - При retry `x-request-id` сохраняется в headers; в DLQ — виден.
 - Проверено: `curl -i` → `x-request-id` в ответе = `request_id` в логах api/worker.
 - `proxy_pass` → api (единственный HTTP-вход для клиента); worker получает `request_id` из очереди, mock-provider — от worker. mock-provider не логирует `X-Request-Id` (внешний, опционально — LIMITS).
+
+## Инцидент: 401 → DLQ → зависший PENDING (демонстрация метрики)
+- transfer `b7f853ad` (22:34:58): worker 3× `401 Unauthorized` от mock-provider (mock без `PROVIDER_API_KEY`) → `retry 1/3..3/3` → DLQ. Статус в БД остался `PENDING` (worker не обновил — ушёл в DLQ).
+- `oldest_pending_age_seconds` = 4791с — **корректно** показывает зависший PENDING. Алерт `>300s` сработал бы → RUNBOOK (DLQ/401/конфиг mock → fix → replay/FAILED).
+- Это **доказательство** ценности `oldest_pending_age_seconds` + алерта: метрика поймала реальный инцидент (не декоративна).
+- Для «чистого» дашборда — `b7f853ad` помечен FAILED (артефакт 401/DLQ; в проде — replay/ручной fix). Или оставлен PENDING как демонстрация (решение: <A/B>).
+
+## Dual-write / outbox / CDC — найдено, описано, рекомендовано (не реализовано)
+- **Проблема:** api делает `INSERT transfer` и `broker.publish` — две транзакции (dual-write). Если publish упадёт (RabbitMQ недоступен) — в БД `PENDING`, в очереди нет сообщения → «зависший PENDING» навсегда.
+- **Рекомендация:** **transactional outbox** — `INSERT transfer` + `INSERT outbox` в одной транзакции; отдельный relay (поллер `FOR UPDATE SKIP LOCKED` → publish → `sent_at`) или **CDC** (Debezium/логическое декодирование WAL) → at-least-once, без потерь.
+- **Что сделано вместо:** **метрика** `oldest_pending_age_seconds` + **алерт** `>300s` **ловят** зависшие PENDING; **RUNBOOK** — разбор (DLQ/потеря/worker down → replay/FAILED). Пример: `b7f853ad` (401→DLQ→PENDING 4791с) — метрика/алерт поймали.
+- **Итог:** dual-write + DLQ + oldest_pending + RUNBOOK достаточно для «поведения при сбоях» в тесте; outbox/CDC — **рекомендация** (LIMITS), следующий шаг в проде.
+
+## L4 — наблюдаемость
+- `docker-compose.reporting.yml` — отдельный override (prometheus/alertmanager/grafana/reporting-ui); `make deploy` — бизнес, `make deploy-observability` — +наблюдаемость. `--remove-orphans` убран (чтобы deploy не сносил reporting).
+- `reporting-ui` = nginx → `grafana:3000` (Grafana не публикуется; одна точка входа `127.0.0.1:8090`).
+- Алерты (Prometheus rules): `oldest_pending_age_seconds>300` (5м, warning), `increase(worker_messages_total{result="dlq"}[5m])>0` (5м, warning), `up{job=api|worker}==0` (2м, critical), `absent(up)` (5м, critical — dead man's switch). Пороги обоснованы (300с — аномалия для перевода; DLQ>0 — разбор; up==0 — мета).
+- Alertmanager — без внешних интеграций (UI 127.0.0.1:9093); в проде — slack/pagerduty/webhook (LIMITS).
+- Дашборд «Payments — работают?» (provisioned): transfers 1h, oldest_pending (порог 60/300), dlq 5m, by status, up — за 10с.
+- Метки `com.northwind.owner: payments|analytics` — на всех (anchor).
+- `OldestPendingTooOld` **firing** на `b7f853ad` (PENDING 4791с) — демонстрация, что алерт работает (инцидент 401→DLQ).
+- Grafana admin — Vault: `seed.sh` (grafana_admin_password), `render-env.sh` (в runtime.env), `deploy.sh` (require_runtime_secret + export из runtime.env). `reporting`: `${GRAFANA_ADMIN_PASSWORD:-admin}` (fallback для down/config; deploy-observability — реальный).
+- Vault seed: `grafana_admin_password` обязателен (`:?` в seed.sh); при изменении набора секретов — `vault kv delete secret/payment-stack/<env>` + re-seed (seed не перезаписывает существующий секрет).

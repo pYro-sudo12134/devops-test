@@ -12,5 +12,6 @@ cat > runtime.env <<EOT
 DB_PASSWORD=$(get db_password)
 RABBITMQ_PASSWORD=$(get rabbitmq_password)
 PROVIDER_API_KEY=$(get provider_api_key)
+GRAFANA_ADMIN_PASSWORD=$(get grafana_admin_password)
 EOT
 chmod 600 runtime.env

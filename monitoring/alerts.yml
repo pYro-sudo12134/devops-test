@@ -1,0 +1,47 @@
+groups:
+  - name: payments
+    rules:
+      - alert: OldestPendingTooOld
+        expr: oldest_pending_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Есть PENDING-перевод старше 5 минут ({{ $value }}s)"
+          description: "oldest_pending_age_seconds={{ $value }}s. Разбор: RUNBOOK «Зависший PENDING»."
+
+      - alert: TransfersDLQNotEmpty
+        expr: increase(worker_messages_total{result="dlq"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Сообщения уходят в DLQ ({{ $value }} за 5м)"
+          description: "worker_messages_total{result=dlq} растёт. Разбор: RUNBOOK «Очередь растёт / DLQ»."
+
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "api не скрейпится (down)"
+          description: "up{job=api}==0. Проверить контейнер/healthcheck."
+
+      - alert: WorkerDown
+        expr: up{job="worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "worker не скрейпится (down)"
+          description: "up{job=worker}==0. Проверить контейнер/логи."
+
+      - alert: NoTargetsUp
+        expr: absent(up)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Нет ни одного up-таргета (мета-мониторинг)"
+          description: "absent(up). Prometheus не видит таргетов — проверить конфиг/сеть."

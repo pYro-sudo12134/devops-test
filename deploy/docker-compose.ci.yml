@@ -5,10 +5,10 @@ services:
     profiles: ["disabled"]
 
   migrate:
-    image: ${IMAGE_PREFIX}/payment-api-migrate:${APP_VERSION}
+    image: ${IMAGE_PREFIX}/payment-api-migrate:${APP_VERSION:-dev}
   api:
-    image: ${IMAGE_PREFIX}/payment-api:${APP_VERSION}
+    image: ${IMAGE_PREFIX}/payment-api:${APP_VERSION:-dev}
   worker:
-    image: ${IMAGE_PREFIX}/payment-worker:${APP_VERSION}
+    image: ${IMAGE_PREFIX}/payment-worker:${APP_VERSION:-dev}
   mock-provider:
-    image: ${IMAGE_PREFIX}/mock-provider:${APP_VERSION}
+    image: ${IMAGE_PREFIX}/mock-provider:${APP_VERSION:-dev}

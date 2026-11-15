@@ -36,6 +36,7 @@ else
   : "${DB_PASSWORD:?DB_PASSWORD is required}"
   : "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
   : "${PROVIDER_API_KEY:?PROVIDER_API_KEY is required}"
+  : "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}"
 fi
 
 if [ -f .last_version ]; then
@@ -68,6 +69,7 @@ else
 DB_PASSWORD=${DB_PASSWORD}
 RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
 PROVIDER_API_KEY=${PROVIDER_API_KEY}
+GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
 EOT
   chmod 600 runtime.env
 fi
@@ -83,6 +85,11 @@ require_runtime_secret() {
 require_runtime_secret DB_PASSWORD
 require_runtime_secret RABBITMQ_PASSWORD
 require_runtime_secret PROVIDER_API_KEY
+if [ -n "${COMPOSE_EXTRA_FILE:-}" ] && echo "$COMPOSE_EXTRA_FILE" | grep -q "reporting"; then
+  require_runtime_secret GRAFANA_ADMIN_PASSWORD
+  GRAFANA_ADMIN_PASSWORD="$(grep -E '^GRAFANA_ADMIN_PASSWORD=' runtime.env | head -n1 | cut -d= -f2- | tr -d '\r')"
+  export GRAFANA_ADMIN_PASSWORD
+fi
 
 PROVIDER_API_KEY="$(grep -E '^PROVIDER_API_KEY=' runtime.env | head -n1 | cut -d= -f2- | tr -d '\r')"
 export PROVIDER_API_KEY
@@ -99,7 +106,7 @@ $COMPOSE up -d --wait db
 
 $COMPOSE run --rm --no-deps -T migrate
 
-$COMPOSE up -d --remove-orphans --wait
+$COMPOSE up -d --wait
 
 if ! bash ../scripts/smoke.sh; then
   echo "smoke failed, rolling back to ${PREV_VERSION:-unknown}" >&2

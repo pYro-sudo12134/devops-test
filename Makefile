@@ -18,8 +18,12 @@ help:
 deploy:
 	./deploy/deploy.sh $(ENV)
 
+deploy-observability:
+	COMPOSE_EXTRA_FILE=docker-compose.reporting.yml ./deploy/deploy.sh $(ENV)
+
 down:
-	$(COMPOSE) down
+	APP_VERSION=$${APP_VERSION:-dev} \
+	  docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.reporting.yml down
 
 status:
 	./scripts/status.sh
@@ -45,6 +49,3 @@ lint:
 test:
 	PYTHONPATH=services/api pytest services/api/tests
 	PYTHONPATH=services/worker pytest services/worker/tests
-
-deploy-observability:
-	COMPOSE_EXTRA_FILE=docker-compose.reporting.yml ./deploy/deploy.sh $(ENV)

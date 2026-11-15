@@ -66,5 +66,36 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
+  loki:
+    image: grafana/loki:3.1.1
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ../monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    labels: *labels-analytics
+    logging: *default-logging
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.4.2
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+    volumes:
+      - ../monitoring/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    ports:
+      - "127.0.0.1:12345:12345"
+    depends_on:
+      - loki
+    labels: *labels-analytics
+    logging: *default-logging
+    restart: unless-stopped
+
 volumes:
   grafana-data:
+  loki-data:

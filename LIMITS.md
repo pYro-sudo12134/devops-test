@@ -23,3 +23,5 @@
 - `b7f853ad` PENDING — артефакт 401→DLQ; для чистого дашборда — FAILED (или оставить как демо).
 
 - Vault dev (root-токен, in-memory); в проде — persistent + AppRole/policies. Seed не перезаписывает существующий секрет — при смене набора/значений: `vault kv delete` + re-seed (RUNBOOK).
+- Loki single-binary/filesystem/7d (тест); в проде — object storage/retention.
+- `oldest_pending_age_seconds` — на `on_message` (при простое «застывает», показывает проблему); в проде — по таймеру (+outbox/CDC).

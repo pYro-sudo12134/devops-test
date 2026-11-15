@@ -2,13 +2,15 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-mkdir -p ../backups
+ROOT="$(cd .. && pwd)"
+mkdir -p "$ROOT/backups"
 umask 077
 
-FILE="../backups/payments-$(date +%Y%m%d-%H%M%S).sql"
+FILE="$ROOT/backups/payments-$(date +%Y%m%d-%H%M%S).sql"
 docker compose exec -T db pg_dump -U payments -d payments --no-owner --no-privileges > "$FILE"
 chmod 600 "$FILE"
 
-ls -1t ../backups/payments-*.sql 2>/dev/null | tail -n +8 | xargs -r rm -f
+# ротация: 7 последних
+ls -1t "$ROOT"/backups/payments-*.sql 2>/dev/null | tail -n +8 | xargs -r rm -f
 
 echo "$FILE"

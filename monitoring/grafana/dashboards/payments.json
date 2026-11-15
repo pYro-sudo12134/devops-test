@@ -25,7 +25,7 @@
     {
       "type": "stat", "title": "DLQ (5m)",
       "gridPos": {"h": 6, "w": 8, "x": 16, "y": 0},
-      "targets": [{"expr": "sum(increase(worker_messages_total{result=\"dlq\"}[5m]))", "legendFormat": "dlq"}],
+            "targets": [{"expr": "rabbitmq_queue_messages_ready{queue=\"transfers.dlq\"}", "legendFormat": "dlq"}],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
       "fieldConfig": {"defaults": {"thresholds": {"steps": [
         {"color": "green", "value": null},
@@ -44,6 +44,12 @@
         {"expr": "up{job=\"api\"}", "legendFormat": "api"},
         {"expr": "up{job=\"worker\"}", "legendFormat": "worker"}
       ]
+    },
+    {
+      "type": "logs", "title": "Logs (api/worker) — request_id",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 14},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{"expr": "{job=\"docker\", service_name=~\"payment-stack-(api|worker).*\"}"}]
     }
   ]
 }

@@ -80,3 +80,5 @@
 - `OldestPendingTooOld` **firing** на `b7f853ad` (PENDING 4791с) — демонстрация, что алерт работает (инцидент 401→DLQ).
 - Grafana admin — Vault: `seed.sh` (grafana_admin_password), `render-env.sh` (в runtime.env), `deploy.sh` (require_runtime_secret + export из runtime.env). `reporting`: `${GRAFANA_ADMIN_PASSWORD:-admin}` (fallback для down/config; deploy-observability — реальный).
 - Vault seed: `grafana_admin_password` обязателен (`:?` в seed.sh); при изменении набора секретов — `vault kv delete secret/payment-stack/<env>` + re-seed (seed не перезаписывает существующий секрет).
+- Per-queue RabbitMQ метрики: `rabbitmq_queue_messages_ready{queue="transfers.dlq"}` (реальное состояние DLQ; без `queue` — агрегат по всем очередям, не годится). DLQ-панель/алерт — на `queue="transfers.dlq"` (не `rate`, не counter).
+- Loki/Alloy: `keep` (`/payment-stack-*`) — только наши контейнеры; `source=docker`/`job=docker` — лейбл (без него «at least one label pair»); retention 7d; `reject_old_samples` убран (старые не 400).

@@ -61,3 +61,8 @@
 - `seed.sh` → Vault (secret/payment-stack/<env>); `render-env.sh` → runtime.env; `deploy.sh` → export.
 - Если секрет не применился (seed не перезаписывает): `vault kv delete secret/payment-stack/<env>` + `make deploy-observability` (re-seed).
 - Grafana: admin / GRAFANA_ADMIN_PASSWORD (из .env/Vault); http://127.0.0.1:8090.
+
+## DLQ (per-queue)
+- `rabbitmq_queue_messages_ready{queue="transfers.dlq"}` (Prometheus) / UI `15672`.
+- Панель Grafana «DLQ» — реальное состояние; алерт `TransfersDLQNotEmpty` (>0, 5м).
+- Разбор: `logs worker | grep -iE "dlq|retry|moved"`, replay из DLQ (UI) / FAILED.

@@ -36,7 +36,6 @@ else
   : "${DB_PASSWORD:?DB_PASSWORD is required}"
   : "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
   : "${PROVIDER_API_KEY:?PROVIDER_API_KEY is required}"
-  : "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}"
 fi
 
 if [ -f .last_version ]; then

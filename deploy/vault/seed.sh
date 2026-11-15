@@ -17,12 +17,13 @@ set -a
 . ./.env
 set +a
 
+: "${DB_PASSWORD:?DB_PASSWORD is required (set in deploy/.env)}"
+: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (set in deploy/.env)}"
+: "${PROVIDER_API_KEY:?PROVIDER_API_KEY is required (set in deploy/.env)}"
+: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required (set in deploy/.env)}"
+
 docker compose exec -T vault vault kv put "secret/payment-stack/$ENV" \
   db_password="$DB_PASSWORD" \
   rabbitmq_password="$RABBITMQ_PASSWORD" \
   provider_api_key="$PROVIDER_API_KEY" \
-  grafana_admin_password="$GRAFANA_ADMIN_PASSWORD" 
-  : "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required (set in deploy/.env)}"
-  : "${DB_PASSWORD:?DB_PASSWORD is required (set in deploy/.env)}"
-  : "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required (set in deploy/.env)}"
-  : "${PROVIDER_API_KEY:?PROVIDER_API_KEY is required (set in deploy/.env)}"
+  grafana_admin_password="$GRAFANA_ADMIN_PASSWORD" >/dev/null

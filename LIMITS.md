@@ -1,27 +1,27 @@
 # LIMITS
 
-- Vault — dev-режим (данные в памяти), не persistent. Для прода — Vault с storage backend (вне рамок теста).
-- DLQ / лимит повторов для worker — не реализовано (L3).
-- `provider.py` использует `verify=False` — не исправлено (L3).
-- `request_id` в логах api/worker — не реализовано (L3).
-- RED/бизнес-метрики, алерты, мета-мониторинг, дашборд — L4.
-- `reporting-ui` не подключён к деплою (L4).
-- CI проверяет env-путь; vault-путь (локальный stage) — вручную (Vault dev в CI не поднимаем, `profiles: disabled`).
-- Образы в GHCR публичные (тест); в проде — приватные + pull secret.
-- Боевых секретов/деплоя нет: CI не деплоит, compose-smoke эфемерный.
-- `restore.sh` не делает `--clean` по умолчанию (осознанно, чтобы не было разрушительных действий); чистое восстановление — отдельный шаг с подтверждением (RUNBOOK).
-- `request_id`: mock-provider не логирует `X-Request-Id` (внешний сервис, не наш код). nginx перезаписывает клиентский `X-Request-Id` своим `$request_id` (без `map`); в проде — `map` (клиентский ID не теряется).
+## Инфраструктура
+- Vault dev (in-memory, root-токен); прод — persistent + AppRole/policies, аудит.
+- Alertmanager без интеграций (UI); прод — slack/pagerduty/webhook.
+- Prometheus скрейпит `api:8000` — одна реплика из 2 (Docker DNS); прод — dns_sd/ServiceMonitor.
+- TLS: клиент→nginx — HTTP (прод TLS-терминация); внутри сети plain (прод mTLS/mesh). TLS к mock-provider — проверяется.
+- GHCR-пакеты публичные (тест); прод — приватные + pull secret.
+- `mock-provider` self-signed + `/admin/fail-mode` без auth (тестовая фича).
+- Grafana admin — initial из Vault; смена — `grafana cli` (прод — SSO/oauth).
+- Loki single-binary/filesystem/7d (тест); прод — object storage/retention.
+- `management_metrics_collection` deprecated (warning, безвреден); прод — обновить RabbitMQ/отключить.
+
+## Приложение / надёжность
+- **Dual-write** (INSERT+publish) не атомарен; **outbox/CDC** — рекомендация (прод), не реализовано (вне DevOps-зоны; 3 суток). Метрика/алерт + RUNBOOK ловят.
+- Retry — фиксированный TTL 10с (одна retry-очередь); прод — экспоненциальный backoff/несколько очередей.
+- `oldest_pending_age_seconds` — на `on_message` (при простое «застывает»; показывает проблему); прод — по таймеру (+outbox/CDC).
 - `declare_topology` дублируется в api/worker (разные образы); общий модуль — при росте.
-- **Dual-write** (api: `INSERT` + `publish` не атомарны) — риск зависшего PENDING при publish-fail. **Рекомендация:** transactional outbox + relay/CDC (Debezium) — в проде (не в тесте; изменение приложения, вне DevOps-зоны задания). Метрика `oldest_pending_age_seconds` + алерт + RUNBOOK ловят/разбирают.
-- `oldest_pending_age_seconds` — на `on_message` (при простое worker «застывает»; если PENDING есть, а worker молчит — покажет старый возраст, это хорошо). В проде — по таймеру (и outbox/CDC для доставки).
-
-- Alertmanager без интеграций (UI); в проде — slack/pagerduty/webhook.
-- Grafana admin по умолчанию `admin` (тест); в проде — секрет/Vault.
-- Prometheus скрейпит `api:8000` — одна реплика из 2 (Docker DNS); в проде — dns_sd/ServiceMonitor.
-- DLQ-алерт — по `increase(worker_messages_total{result="dlq"}[5m])` (наша метрика); реальное состояние DLQ (`rabbitmq_queue_messages`) — опционально (rabbitmq job :15692).
-- `oldest_pending_age_seconds` — на `on_message`; в проде — по таймеру (+ outbox/CDC).
+- `request_id`: mock-provider не логирует `X-Request-Id` (внешний); nginx `map` (клиентский не теряется).
+- `*_created` (prometheus_client) — авто-метка counter'а, не используется.
 - `b7f853ad` PENDING — артефакт 401→DLQ; для чистого дашборда — FAILED (или оставить как демо).
-
-- Vault dev (root-токен, in-memory); в проде — persistent + AppRole/policies. Seed не перезаписывает существующий секрет — при смене набора/значений: `vault kv delete` + re-seed (RUNBOOK).
-- Loki single-binary/filesystem/7d (тест); в проде — object storage/retention.
-- `oldest_pending_age_seconds` — на `on_message` (при простое «застывает», показывает проблему); в проде — по таймеру (+outbox/CDC).
+- Ротация ключей: только `PROVIDER_API_KEY` (внешний). DB_PASSWORD/RABBITMQ_PASSWORD — не ротированы (rolling restart/даунтайм, риск); прод — `ALTER USER`/`change_password` + Vault KV v2 + двойные креды. `VAULT_DEV_ROOT_TOKEN` — dev. Ротация **логов** — json-file 10m×3 + Loki 7d.
+- Vault seed не перезаписывает существующий секрет — при смене: `vault kv delete` + re-seed.
+- `docker-compose.reporting.yml` — override; `make deploy` не поднимает наблюдаемость (по дизайну).
+- `restore_check` — временная БД (`verify-restore`); при блокировках — `DROP ... WITH (FORCE)`.
+- Порты: `vault:8200`, `rabbitmq:15672`, `prometheus:9090`, `alertmanager:9093`, `grafana` (через reporting-ui:8090), `loki:3100`, `alloy:12345` — `127.0.0.1` (localhost). `reverse-proxy` (api) — `0.0.0.0:${API_PORT}` (клиентский; тест — localhost; прод — за LB/TLS, не `0.0.0.0` напрямую).
+- Клиент→nginx — HTTP (TLS не ставили: тест, localhost; прод — TLS-терминация на nginx/Let's Encrypt). TLS к mock-provider — проверяется (`PROVIDER_CA_BUNDLE`) — единственный TLS-канал.
